@@ -7,16 +7,25 @@ jobs:
   test:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         node: [18, 20, 22]
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
+      # pnpm itself needs Node 22; the SDK is then tested on each supported Node.
       - uses: actions/setup-node@v4
         with:
-          node-version: ${{ matrix.node }}
+          node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
-      - run: pnpm test
       - run: pnpm build
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - run: node --import tsx --test test/emails.test.ts
+      - name: Built package loads (CJS + ESM)
+        run: |
+          node -e "const { Zalify } = require('./dist/index.cjs'); new Zalify('k')"
+          node --input-type=module -e "import { Zalify } from './dist/index.js'; new Zalify('k')"
