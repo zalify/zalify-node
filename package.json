@@ -1,8 +1,8 @@
 {
   "name": "@zalify/sdk",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Official Node.js / TypeScript SDK for the Zalify API",
-  "keywords": ["zalify", "email", "transactional email", "sdk"],
+  "keywords": ["zalify", "email", "transactional email", "contacts", "sdk"],
   "homepage": "https://github.com/zalify/zalify-node#readme",
   "repository": {
     "type": "git",

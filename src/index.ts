@@ -1,6 +1,11 @@
 export { Zalify, type ZalifyOptions } from "./client";
 export { ZalifyError, type ZalifyErrorCode } from "./errors";
 export type {
+  Contacts,
+  UpsertContactParams,
+  UpsertContactResult,
+} from "./contacts";
+export type {
   EmailMessage,
   EmailSendError,
   EmailType,

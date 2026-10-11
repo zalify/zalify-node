@@ -6,6 +6,8 @@ export type ZalifyErrorCode =
   | "unauthorized"
   | "missing_scope"
   | "email_not_enabled"
+  | "contacts_not_enabled"
+  | "list_not_found"
   | "usage_paused"
   | "invalid_json"
   | "invalid_request"

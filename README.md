@@ -11,7 +11,7 @@ npm install @zalify/sdk
 ## Before you start
 
 1. In your Zalify workspace, go to **Settings → Email** and add a sending domain, then publish the DNS records it shows (DKIM TXT + MAIL FROM CNAME). Add a `_dmarc` TXT too (`v=DMARC1; p=none` to start).
-2. In **Settings → Developer**, create an API key and tick **Send email**. Keys without it can't send.
+2. In **Settings → Developer**, create an API key and tick **Send email** (and **Manage contacts** to add contacts). A key can only do what it was created with.
 3. Keep the key on your server, e.g. in `ZALIFY_API_KEY`. Never ship it to a browser.
 
 ## Send an email
@@ -50,6 +50,27 @@ for (const [i, result] of data.entries()) {
 }
 ```
 
+## Contacts
+
+Create or update a contact by email, e.g. when someone signs up. The key needs the **Manage contacts** permission.
+
+```ts
+const contact = await zalify.contacts.upsert({
+  email: "user@example.com",
+  firstName: "Ada",
+  properties: { plan: "pro" },
+  subscribed: true, // they ticked "send me product updates"
+  lists: [PRODUCT_UPDATES_LIST_ID],
+});
+// { id, email, subscribed: true, lists: [{ id, status: "joined" }] }
+```
+
+- `subscribed: true` subscribes the contact to marketing email, `false` unsubscribes, and leaving it out keeps what's there. It's taken as given, so only send `true` for people who opted in. New senders start with a small daily volume that grows while bounces and complaints stay low.
+- Marketing email (`type: "marketing"`) only reaches subscribed contacts.
+- Contacts are matched by email. A phone that already belongs to another contact isn't attached (`phoneSkipped: true`).
+- Adding a contact to a list can start that list's automations, such as a welcome series.
+- Calls are safe to retry; the same email updates the same contact.
+
 ## Errors, retries and idempotency
 
 Every failure is a `ZalifyError` with a stable `code`, the HTTP `status`, and `details` for validation errors.
@@ -70,8 +91,10 @@ try {
 | code | status | meaning |
 | --- | --- | --- |
 | `unauthorized` | 401 | missing or invalid API key |
-| `missing_scope` | 403 | the key wasn't created with **Send email** |
+| `missing_scope` | 403 | the key lacks the permission: **Send email** or **Manage contacts** |
 | `email_not_enabled` | 403 | the workspace has no sending set up yet |
+| `contacts_not_enabled` | 403 | the workspace has no contacts set up yet |
+| `list_not_found` | 404 | a list in `lists` isn't in your workspace (nothing was written) |
 | `usage_paused` | 403 | email sending is paused for the workspace (plan or balance) |
 | `invalid_request` | 400 | the body doesn't match the schema (see `details`) |
 | `unverified_sender` | 422 | the from address isn't on a verified domain |
@@ -151,7 +174,7 @@ For Postmark, map `From`/`To`/`Subject`/`HtmlBody`/`TextBody`/`ReplyTo` to `from
 
 ## Roadmap
 
-- Contacts and lists
+- Listing contacts and lists; batch upsert
 - A sandbox key that renders without delivering
 
 API reference: https://app.zalify.com/api/v1/reference
