@@ -10,3 +10,11 @@ export type {
   SendEmailResult,
   RequestOptions,
 } from "./emails";
+export {
+  verifyWebhook,
+  Webhooks,
+  WebhookVerificationError,
+  type VerifyOptions,
+  type WebhookEvent,
+  type WebhookEventType,
+} from "./webhooks";

@@ -24,7 +24,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
-      - run: node --import tsx --test test/emails.test.ts
+      - run: node --import tsx --test test/emails.test.ts test/webhooks.test.ts
       - name: Built package loads (CJS + ESM)
         run: |
           node -e "const { Zalify } = require('./dist/index.cjs'); new Zalify('k')"

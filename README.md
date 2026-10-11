@@ -97,6 +97,48 @@ new Zalify({
 });
 ```
 
+## Webhooks
+
+Add an endpoint in **Settings → Developer → Webhooks** to get events for email sent through the API:
+
+- `email.sent`
+- `email.delivered`
+- `email.bounced`, with `bounce_type` `hard` or `soft`
+- `email.complained`
+- `email.opened`
+- `email.clicked`, with `url`
+- `contact.unsubscribed`
+
+The signing secret (`whsec_…`) is shown once, when you create the endpoint.
+
+Verify every request against the **raw** body before trusting it:
+
+```ts
+import express from "express";
+import { verifyWebhook, WebhookVerificationError } from "@zalify/sdk";
+
+app.post("/webhooks/zalify", express.raw({ type: "application/json" }), (req, res) => {
+  let event;
+  try {
+    event = verifyWebhook(req.body, req.headers, process.env.ZALIFY_WEBHOOK_SECRET!);
+  } catch (error) {
+    if (error instanceof WebhookVerificationError) return res.status(400).end();
+    throw error;
+  }
+  if (event.type === "email.bounced" && event.data.bounce_type === "hard") {
+    // stop emailing event.data.to
+  }
+  res.status(204).end();
+});
+```
+
+In a Next.js route handler: `verifyWebhook(await req.text(), req.headers, secret)`. Or construct the client with `new Zalify({ webhookSecret })` and call `zalify.webhooks.verify(body, headers)`.
+
+- Requests follow the [Standard Webhooks](https://www.standardwebhooks.com) spec.
+- `webhook-id` stays the same across retries, so use it to drop duplicates.
+- Answer `2xx` within 10 s. Failed deliveries are retried for about 13 hours.
+- Events can arrive out of order.
+
 ## Coming from Resend or Postmark
 
 The send call takes the same shape as Resend's `emails.send`. The differences:
@@ -109,7 +151,6 @@ For Postmark, map `From`/`To`/`Subject`/`HtmlBody`/`TextBody`/`ReplyTo` to `from
 
 ## Roadmap
 
-- Signed webhooks (delivered, bounced, complained, unsubscribed) with `zalify.webhooks.verify()`
 - Contacts and lists
 - A sandbox key that renders without delivering
 

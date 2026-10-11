@@ -1,7 +1,8 @@
 import { Emails } from "./emails";
+import { Webhooks } from "./webhooks";
 import type { HttpConfig } from "./http";
 
-export const VERSION = "0.1.0";
+export const VERSION = "0.2.0";
 
 export type ZalifyOptions = {
   /** A Zalify Public API key (`zalify_api_…`). Defaults to `ZALIFY_API_KEY`. */
@@ -16,10 +17,13 @@ export type ZalifyOptions = {
   maxRetryDelayMs?: number;
   /** A custom fetch (tests, proxies). Defaults to the global fetch. */
   fetch?: typeof fetch;
+  /** Your endpoint's `whsec_…` secret, for `webhooks.verify`. Defaults to `ZALIFY_WEBHOOK_SECRET`. */
+  webhookSecret?: string;
 };
 
 export class Zalify {
   readonly emails: Emails;
+  readonly webhooks: Webhooks;
 
   constructor(apiKeyOrOptions?: string | ZalifyOptions) {
     const options: ZalifyOptions =
@@ -51,5 +55,6 @@ export class Zalify {
       userAgent: `zalify-node/${VERSION}`,
     };
     this.emails = new Emails(http);
+    this.webhooks = new Webhooks(options.webhookSecret);
   }
 }
