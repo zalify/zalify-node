@@ -18,6 +18,7 @@ export type ZalifyErrorCode =
   | "unavailable"
   | "unverified_sender"
   | "not_subscribed"
+  | "new_recipient_limit"
   | "suppressed"
   | "rejected"
   | "network_error"

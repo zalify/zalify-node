@@ -45,7 +45,12 @@ export type SendBatchParams = {
 };
 
 export type EmailSendError = {
-  code: "unverified_sender" | "not_subscribed" | "suppressed" | "rejected";
+  code:
+    | "unverified_sender"
+    | "not_subscribed"
+    | "new_recipient_limit"
+    | "suppressed"
+    | "rejected";
   message: string;
 };
 

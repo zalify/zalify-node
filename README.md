@@ -38,6 +38,7 @@ const { id } = await zalify.emails.send(
 - `type` defaults to `"transactional"`: delivered at once, no unsubscribe link. Use `type: "marketing"` for newsletters and announcements. They get an unsubscribe link and headers, and only reach recipients who are subscribed contacts in your workspace.
 - `to` is one address. Send one message per recipient, or use a batch.
 - A recipient on your suppression list (an earlier hard bounce or spam complaint) still gets an `id`, but the message is not delivered.
+- Each day your workspace can email a limited number of addresses it has never emailed before. New workspaces start at 1,000 a day for transactional mail and 500 for marketing. The limit doubles after each day with low bounce and complaint rates, and goes away once it reaches 50,000. Over the limit, sends fail with `new_recipient_limit` (marketing waits until the next day). People you've emailed before are never limited.
 
 ## Send a batch
 
@@ -101,6 +102,7 @@ try {
 | `not_subscribed` | 422 | a marketing recipient isn't a subscribed contact |
 | `idempotency_conflict` | 409 | the idempotency key was used for a different request |
 | `rate_limited` | 429 | over 120 requests a minute for this key (a batch counts once) |
+| `new_recipient_limit` | 429 | the recipient is new to your workspace and today's allowance of new recipients is used; it resets at 00:00 UTC (`retryAfter`) |
 | `unavailable` | 503 | temporary; safe to retry with the same idempotency key |
 
 The SDK retries `rate_limited`, `unavailable`, `idempotency_in_progress`, timeouts and network errors on its own, up to `maxRetries` (default 3). It honors `Retry-After`, and won't wait longer than `maxRetryDelayMs` (default 10 s). Retries always reuse the request's idempotency key, so they never send twice.
