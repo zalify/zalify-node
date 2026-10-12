@@ -1,3 +1,16 @@
+# CI + auto-publish for @zalify/sdk.
+#
+# - Every PR / push to main: typecheck, build, and test on Node 18/20/22.
+# - Push to main where package.json's version isn't on npm yet: publish
+#   @zalify/sdk and tag the commit v<version>. To release, bump the version.
+#
+# Auth: the first publish uses the NPM_TOKEN repo secret (npm can only attach
+# a trusted publisher to a package that already exists). After that, set up
+# npm Trusted Publishing (OIDC) and delete the secret:
+#   npmjs.com → @zalify/sdk → Settings → Publishing access → Add trusted
+#   publisher → GitHub Actions → repository zalify/zalify-node, workflow ci.yml
+# npm tries OIDC first and falls back to the token, so both work meanwhile.
+
 name: CI
 on:
   push:
@@ -24,8 +37,53 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
-      - run: node --import tsx --test test/emails.test.ts test/webhooks.test.ts
+      - run: node --import tsx --test test/emails.test.ts test/webhooks.test.ts test/contacts.test.ts
       - name: Built package loads (CJS + ESM)
         run: |
           node -e "const { Zalify } = require('./dist/index.cjs'); new Zalify('k')"
           node --input-type=module -e "import { Zalify } from './dist/index.js'; new Zalify('k')"
+
+  publish:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # push the release tag
+      id-token: write # npm Trusted Publishing (OIDC) + provenance
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+      # Trusted Publishing needs npm >= 11.5.1 (node 22 bundles npm 10).
+      - run: npm install -g npm@latest && npm --version
+      - run: pnpm install --frozen-lockfile
+
+      - name: Detect unpublished version
+        id: version
+        run: |
+          LOCAL=$(node -p "require('./package.json').version")
+          PUBLISHED=$(npm view @zalify/sdk version 2>/dev/null || echo "none")
+          echo "local=$LOCAL" >> "$GITHUB_OUTPUT"
+          if [ "$LOCAL" = "$PUBLISHED" ]; then
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "@zalify/sdk@$LOCAL already on npm — nothing to publish."
+          else
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+            echo "Will publish @zalify/sdk@$LOCAL (npm has $PUBLISHED)."
+          fi
+
+      - name: Publish @zalify/sdk
+        if: steps.version.outputs.publish == 'true'
+        run: npm publish --access public --provenance # prepublishOnly typechecks, tests and builds
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Tag release
+        if: steps.version.outputs.publish == 'true'
+        run: |
+          git tag "v${{ steps.version.outputs.local }}"
+          git push origin "v${{ steps.version.outputs.local }}"
