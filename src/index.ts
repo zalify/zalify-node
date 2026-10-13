@@ -7,12 +7,14 @@ export type {
 } from "./contacts";
 export type {
   EmailMessage,
+  EmailSender,
   EmailSendError,
   EmailType,
   SendBatchParams,
   SendBatchResult,
   SendEmailParams,
   SendEmailResult,
+  SenderEmail,
   RequestOptions,
 } from "./emails";
 export {
