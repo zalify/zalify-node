@@ -1,18 +1,13 @@
-# Stages @zalify/sdk on npm for a maintainer to approve.
+# Publishes @zalify/sdk to npm.
 #
 # Version-driven: when package.json changes on main (or on manual dispatch)
-# and its version isn't on npm yet, CI runs `npm stage publish`. The version
-# goes live once a maintainer approves it with 2FA on npmjs.com (the
-# package's staged versions) or with `npm stage approve <stage-id>`.
-# Releasing is "bump the version, merge, approve".
+# and its version isn't on npm yet, it's published. Releasing is just
+# "bump the version, merge"; nothing happens when the version is already out.
 #
 # Auth is npm Trusted Publishing (OIDC), no token secret: on npmjs.com,
 # @zalify/sdk → Settings → Trusted Publisher → GitHub Actions, repository
-# zalify/zalify-node, workflow "publish.yml", permission "npm stage publish"
-# only. Provenance attestations are attached automatically.
-#
-# A version that's staged but not yet approved isn't visible to `npm view`,
-# so staging it again (e.g. a re-run) fails until it's approved or rejected.
+# zalify/zalify-node, workflow "publish.yml", with "npm publish" allowed.
+# Provenance attestations are attached automatically.
 
 name: npm publish
 
@@ -43,16 +38,15 @@ jobs:
           node-version: 24
           cache: pnpm
           registry-url: https://registry.npmjs.org
-      # `npm stage` needs npm 12.2 (or 11.21) or later.
+      # Trusted Publishing needs npm >= 11.5.1.
       - run: npm install -g npm@latest && npm --version
       - run: pnpm install --frozen-lockfile
-      - name: Stage @zalify/sdk (if the version is new)
+      - name: Publish @zalify/sdk (if the version is new)
         run: |
           V=$(node -p "require('./package.json').version")
           if npm view "@zalify/sdk@$V" version >/dev/null 2>&1; then
             echo "@zalify/sdk@$V already on npm, skipping"
           else
             # prepublishOnly runs typecheck, tests and build first
-            npm stage publish --access public
-            echo "::notice::@zalify/sdk@$V is staged. Approve it on npmjs.com (2FA) to publish it."
+            npm publish --access public
           fi
