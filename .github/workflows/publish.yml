@@ -1,0 +1,32 @@
+name: Publish
+# Publishes @zalify/sdk to npm when a release is published on GitHub. The
+# release tag must match package.json's version (v0.4.0 → "0.4.0").
+on:
+  release:
+    types: [published]
+permissions:
+  contents: read
+  id-token: write # npm provenance
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+      - name: Tag matches package.json
+        run: |
+          version=$(node -p "require('./package.json').version")
+          if [ "${GITHUB_REF_NAME}" != "v${version}" ]; then
+            echo "Release tag ${GITHUB_REF_NAME} doesn't match package.json version ${version}" >&2
+            exit 1
+          fi
+      - run: pnpm install --frozen-lockfile
+      # prepublishOnly runs typecheck, tests and build
+      - run: pnpm publish --access public --provenance --no-git-checks
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

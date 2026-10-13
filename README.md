@@ -40,6 +40,22 @@ const { id } = await zalify.emails.send(
 - A recipient on your suppression list (an earlier hard bounce or spam complaint) still gets an `id`, but the message is not delivered.
 - Each day your workspace can email a limited number of addresses it has never emailed before. New workspaces start at 1,000 a day for transactional mail and 500 for marketing. The limit doubles after each day with low bounce and complaint rates, and goes away once it reaches 50,000. Over the limit, sends fail with `new_recipient_limit` (marketing waits until the next day). People you've emailed before are never limited.
 
+### Send from a sender set up in Zalify
+
+Instead of `from`, pass `senderEmailId`: a sender email from **Settings → Email**. Its name, address and Reply-To are used (your `replyTo` still wins), so they're managed in Zalify rather than in your code.
+
+```ts
+const { data: senders } = await zalify.emails.listSenders();
+// [{ id, name, email, replyTo, verified }]
+
+await zalify.emails.send(
+  { senderEmailId: process.env.ZALIFY_SENDER_EMAIL_ID, to, subject, html },
+  { idempotencyKey: `reset:${tokenId}` }
+);
+```
+
+A message takes `from` or `senderEmailId`, not both. A sender that isn't in your workspace or isn't verified yet fails with `unverified_sender`.
+
 ## Send a batch
 
 Send up to 100 messages in one request. A refused message doesn't fail the others.

@@ -179,3 +179,30 @@ test("a custom baseUrl is used without a trailing slash", async () => {
   );
   assert.equal(calls[0]?.url, "http://localhost:3000/api/v1/email/send");
 });
+
+test("send can name a sender email instead of a from address", async () => {
+  const { calls, fetchImpl } = scripted([json({ id: "msg_1" })]);
+  const { from: _from, ...rest } = message;
+  await client(fetchImpl).emails.send({ ...rest, senderEmailId: "se_1" });
+  assert.deepEqual(JSON.parse(String(calls[0]?.init.body)), {
+    ...rest,
+    senderEmailId: "se_1",
+  });
+});
+
+test("listSenders gets the workspace's sender emails", async () => {
+  const sender = {
+    id: "se_1",
+    name: "Offdesk",
+    email: "notifications@offdesk.dev",
+    replyTo: null,
+    verified: true,
+  };
+  const { calls, fetchImpl } = scripted([json({ data: [sender] })]);
+  assert.deepEqual(await client(fetchImpl).emails.listSenders(), {
+    data: [sender],
+  });
+  assert.equal(calls[0]?.url, "https://app.zalify.com/api/v1/email/senders");
+  assert.equal(calls[0]?.init.method, "GET");
+  assert.equal(calls[0]?.init.body, undefined);
+});

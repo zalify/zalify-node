@@ -9,11 +9,27 @@ import { type HttpConfig, request } from "./http";
  */
 export type EmailType = "transactional" | "marketing";
 
-export type EmailMessage = {
-  /** `Name <address>` or a bare address, on a domain verified in Zalify. */
-  from: string;
+/**
+ * The sender: a `from` address, or `senderEmailId`, a sender email set up in
+ * Zalify (Settings → Email; list them with `emails.listSenders()`) whose
+ * name, address and Reply-To are then used.
+ */
+export type EmailSender =
+  | {
+      /** `Name <address>` or a bare address, on a domain verified in Zalify. */
+      from: string;
+      senderEmailId?: never;
+    }
+  | {
+      /** A sender email's `id` from `emails.listSenders()`. */
+      senderEmailId: string;
+      from?: never;
+    };
+
+export type EmailMessage = EmailSender & {
   /** One recipient. Send one message per recipient. */
   to: string;
+  /** Defaults to the sender email's Reply-To with `senderEmailId`. */
   replyTo?: string;
   subject: string;
   /** Rendered HTML, up to 5 MB. */
@@ -29,6 +45,18 @@ export type EmailMessage = {
 };
 
 export type SendEmailParams = EmailMessage & { type?: EmailType };
+
+/** A sender email from Settings → Email. */
+export type SenderEmail = {
+  /** Pass as `senderEmailId`. */
+  id: string;
+  name: string;
+  email: string;
+  /** Where replies go; null when they go to `email`. */
+  replyTo: string | null;
+  /** Ready to send from. Sends from an unverified sender fail with `unverified_sender`. */
+  verified: boolean;
+};
 
 export type SendEmailResult = {
   /**
@@ -83,6 +111,14 @@ export class Emails {
       path: "/email/send",
       body: params,
       idempotencyKey: options.idempotencyKey ?? randomUUID(),
+    });
+  }
+
+  /** The sender emails your workspace can send from, for `senderEmailId`. */
+  async listSenders(): Promise<{ data: SenderEmail[] }> {
+    return request<{ data: SenderEmail[] }>(this.http, {
+      method: "GET",
+      path: "/email/senders",
     });
   }
 
