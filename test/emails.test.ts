@@ -41,6 +41,15 @@ const client = (fetchImpl: typeof fetch, extra = {}) =>
     ...extra,
   });
 
+test("fetch is called on its own, as Cloudflare Workers require", async () => {
+  // Workers throw "Illegal invocation" when fetch runs with another `this`
+  const fetchImpl = function (this: unknown) {
+    if (this !== undefined && this !== globalThis) throw new TypeError("Illegal invocation");
+    return Promise.resolve(json({ id: "msg_1" }));
+  } as unknown as typeof fetch;
+  assert.deepEqual(await client(fetchImpl).emails.send(message), { id: "msg_1" });
+});
+
 test("send posts the message with the key and an idempotency key", async () => {
   const { calls, fetchImpl } = scripted([json({ id: "msg_1" })]);
   const result = await client(fetchImpl).emails.send(

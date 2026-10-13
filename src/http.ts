@@ -64,9 +64,12 @@ export async function request<T>(
 async function once<T>(config: HttpConfig, init: RequestInit): Promise<T> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), config.timeoutMs);
+  // Called on its own, not as config.fetch(...): Cloudflare Workers reject a fetch
+  // invoked with any other `this` ("Illegal invocation").
+  const fetchImpl = config.fetch;
   let response: Response;
   try {
-    response = await config.fetch(`${config.baseUrl}${init.path}`, {
+    response = await fetchImpl(`${config.baseUrl}${init.path}`, {
       method: init.method,
       headers: {
         Authorization: `Bearer ${config.apiKey}`,
