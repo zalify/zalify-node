@@ -1,20 +1,22 @@
 # Publishes @zalify/sdk to npm.
 #
-# Version-driven: on every push to main (or manual dispatch), if
-# package.json's version isn't on npm yet it's published. Releasing is just
+# Version-driven: when package.json changes on main (or on manual dispatch)
+# and its version isn't on npm yet, it's published. Releasing is just
 # "bump the version, merge"; nothing happens when the version is already out.
 #
-# Auth is npm Trusted Publishing (OIDC), no token secret. One-time setup on
-# npmjs.com (the package must already exist, so the first publish is
-# manual): @zalify/sdk → Settings → Trusted Publisher → GitHub Actions,
-# repository zalify/zalify-node, workflow "publish.yml". Provenance
-# attestations are attached automatically.
+# Auth is npm Trusted Publishing (OIDC), no token secret: on npmjs.com,
+# @zalify/sdk → Settings → Trusted Publisher → GitHub Actions, repository
+# zalify/zalify-node, workflow "publish.yml", with "npm publish" allowed.
+# Provenance attestations are attached automatically.
 
 name: npm publish
 
 on:
   push:
     branches: [main]
+    paths:
+      - package.json
+      - .github/workflows/publish.yml
   workflow_dispatch:
 
 permissions:
@@ -45,6 +47,6 @@ jobs:
           if npm view "@zalify/sdk@$V" version >/dev/null 2>&1; then
             echo "@zalify/sdk@$V already on npm, skipping"
           else
-            # prepublishOnly runs typecheck, tests and build; pnpm >= 10.14 handles OIDC
-            pnpm publish --access public --no-git-checks
+            # prepublishOnly runs typecheck, tests and build first
+            npm publish --access public
           fi
