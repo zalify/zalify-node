@@ -1,0 +1,58 @@
+# Stages @zalify/sdk on npm for a maintainer to approve.
+#
+# Version-driven: when package.json changes on main (or on manual dispatch)
+# and its version isn't on npm yet, CI runs `npm stage publish`. The version
+# goes live once a maintainer approves it with 2FA on npmjs.com (the
+# package's staged versions) or with `npm stage approve <stage-id>`.
+# Releasing is "bump the version, merge, approve".
+#
+# Auth is npm Trusted Publishing (OIDC), no token secret: on npmjs.com,
+# @zalify/sdk → Settings → Trusted Publisher → GitHub Actions, repository
+# zalify/zalify-node, workflow "publish.yml", permission "npm stage publish"
+# only. Provenance attestations are attached automatically.
+#
+# A version that's staged but not yet approved isn't visible to `npm view`,
+# so staging it again (e.g. a re-run) fails until it's approved or rejected.
+
+name: npm publish
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - package.json
+      - .github/workflows/publish.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write # npm Trusted Publishing (OIDC)
+
+concurrency:
+  group: npm-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4 # version comes from packageManager in package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+      # `npm stage` needs npm 12.2 (or 11.21) or later.
+      - run: npm install -g npm@latest && npm --version
+      - run: pnpm install --frozen-lockfile
+      - name: Stage @zalify/sdk (if the version is new)
+        run: |
+          V=$(node -p "require('./package.json').version")
+          if npm view "@zalify/sdk@$V" version >/dev/null 2>&1; then
+            echo "@zalify/sdk@$V already on npm, skipping"
+          else
+            # prepublishOnly runs typecheck, tests and build first
+            npm stage publish --access public
+            echo "::notice::@zalify/sdk@$V is staged. Approve it on npmjs.com (2FA) to publish it."
+          fi
