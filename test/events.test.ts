@@ -11,7 +11,7 @@ const json = (body: unknown, status = 200, headers: Record<string, string> = {})
 const header = (init: RequestInit | undefined, name: string) =>
   (init?.headers as Record<string, string> | undefined)?.[name];
 
-test("track posts the event with an ISO time and an idempotency key", async () => {
+test("track posts the event with an ISO time and no idempotency key", async () => {
   const calls: Array<{ url: string; init: RequestInit }> = [];
   const fetchImpl = (async (url: string, init: RequestInit) => {
     calls.push({ url, init });
@@ -45,16 +45,18 @@ test("track posts the event with an ISO time and an idempotency key", async () =
     uniqueId: "quiz:1",
     time: "2026-10-21T08:00:00.000Z",
   });
-  assert.ok(header(calls[0]?.init, "Idempotency-Key"));
+  assert.equal(header(calls[0]?.init, "Idempotency-Key"), undefined);
 });
 
-test("track retries 503 with the same idempotency key", async () => {
+test("track fixes time once, so a 503 retry resends the same body", async () => {
+  const bodies: string[] = [];
   const keys: Array<string | undefined> = [];
   const responses = [
     json({ error: "Temporarily unavailable", code: "unavailable" }, 503),
     json({ id: "e1", profileId: "p1", duplicate: false, recordedOnly: false }, 202),
   ];
   const fetchImpl = (async (_url: string, init: RequestInit) => {
+    bodies.push(String(init.body));
     keys.push(header(init, "Idempotency-Key"));
     return responses.shift();
   }) as unknown as typeof fetch;
@@ -65,9 +67,75 @@ test("track retries 503 with the same idempotency key", async () => {
   });
 
   await zalify.events.track({ event: "Signed Up", customer: { email: "a@example.com" } });
-  assert.equal(keys.length, 2);
-  assert.ok(keys[0]);
-  assert.equal(keys[0], keys[1]);
+  assert.equal(bodies.length, 2);
+  assert.equal(bodies[0], bodies[1]);
+  assert.match(JSON.parse(bodies[0] ?? "{}").time, /^\d{4}-\d{2}-\d{2}T/);
+  assert.deepEqual(keys, [undefined, undefined]);
+});
+
+test("trackBatch fixes time once, so a 503 retry resends the same body", async () => {
+  const bodies: string[] = [];
+  const responses = [
+    json({ error: "Temporarily unavailable", code: "unavailable" }, 503),
+    json({ accepted: 2, duplicates: 0, failed: 0, results: [] }),
+  ];
+  const fetchImpl = (async (_url: string, init: RequestInit) => {
+    bodies.push(String(init.body));
+    return responses.shift();
+  }) as unknown as typeof fetch;
+  const zalify = new Zalify({ apiKey: "zalify_api_test", fetch: fetchImpl, maxRetryDelayMs: 5 });
+
+  await zalify.events.trackBatch([
+    { event: "A", customer: { email: "a@example.com" } },
+    { event: "B", customer: { email: "b@example.com" } },
+  ]);
+  assert.equal(bodies.length, 2);
+  assert.equal(bodies[0], bodies[1]);
+});
+
+test("daily_limit 429 is not retried", async () => {
+  let calls = 0;
+  const fetchImpl = (async () => {
+    calls++;
+    return json({ error: "Daily event limit reached", code: "daily_limit" }, 429);
+  }) as unknown as typeof fetch;
+  const zalify = new Zalify({ apiKey: "zalify_api_test", fetch: fetchImpl, maxRetryDelayMs: 5 });
+
+  await assert.rejects(
+    zalify.events.track({ event: "X", customer: { email: "a@example.com" } }),
+    (error: unknown) => error instanceof ZalifyError && error.code === "daily_limit"
+  );
+  assert.equal(calls, 1);
+});
+
+test("an invalid Date or an over-long key fails before any request", async () => {
+  let calls = 0;
+  const fetchImpl = (async () => {
+    calls++;
+    return json({});
+  }) as unknown as typeof fetch;
+  const zalify = new Zalify({ apiKey: "zalify_api_test", fetch: fetchImpl });
+
+  await assert.rejects(
+    zalify.events.track({ event: "X", customer: { email: "a@example.com" }, time: new Date("nope") }),
+    (error: unknown) =>
+      error instanceof ZalifyError && error.code === "invalid_request" && error.field === "time"
+  );
+  await assert.rejects(
+    zalify.events.trackBatch(
+      [{ event: "X", customer: { email: "a@example.com" } }],
+      { idempotencyKey: "k".repeat(252) }
+    ),
+    (error: unknown) => error instanceof ZalifyError && error.code === "invalid_request"
+  );
+  await assert.rejects(
+    zalify.events.track(
+      { event: "X", customer: { email: "a@example.com" } },
+      { idempotencyKey: "k".repeat(256) }
+    ),
+    (error: unknown) => error instanceof ZalifyError && error.code === "invalid_request"
+  );
+  assert.equal(calls, 0);
 });
 
 test("track passes a caller's idempotency key through", async () => {
@@ -115,7 +183,7 @@ test("trackBatch returns per-event results in order", async () => {
   assert.deepEqual(body, {
     events: [
       { event: "Booking Confirmed", customer: { email: "a@example.com" }, time: "2026-10-21T08:00:00Z" },
-      { event: "shopify_order_paid", customer: { email: "b@example.com" } },
+      { event: "shopify_order_paid", customer: { email: "b@example.com" }, time: (body as { events: Array<{ time: string }> }).events[1]?.time },
     ],
   });
   assert.equal(result.failed, 1);

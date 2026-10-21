@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { ZalifyError } from "./errors";
 import { type HttpConfig, request } from "./http";
 
 export type EventCustomer = {
@@ -30,8 +30,9 @@ export type EventInput = {
   valueCurrency?: string;
   /**
    * Your dedupe key: the same `uniqueId` is recorded once, however often
-   * it's sent. Without one, the SDK's idempotency key plays that part for
-   * its own retries.
+   * it's sent. Without one, the API dedupes on the event's content (name,
+   * person, time, properties); the SDK fixes `time` before the first
+   * attempt so its own retries resend the same event.
    */
   uniqueId?: string;
   /**
@@ -44,7 +45,10 @@ export type EventInput = {
 export type TrackEventResult = {
   id: string;
   profileId: string;
-  /** The same event (same `uniqueId`) was recorded before; nothing new happened. */
+  /**
+   * The event was already recorded, by an earlier call or by an earlier
+   * attempt of this one that the SDK retried. Either way it's recorded once.
+   */
   duplicate: boolean;
   /** More than 24 hours old: recorded, but no flow starts or ends on it. */
   recordedOnly: boolean;
@@ -103,17 +107,47 @@ export type EventCatalog = { events: CatalogEvent[] };
 
 export type TrackOptions = {
   /**
-   * Retrying with the same key records the event once (it becomes the
-   * event's `uniqueId` when it has none; on a batch, `<key>:<index>`).
-   * Defaults to a fresh UUID per call, so the SDK's own retries are safe.
+   * Optional. Retrying the whole call with the same key records each event
+   * once: an event without a `uniqueId` takes the key as its dedupe key
+   * (`<key>:<index>` on a batch). Use a new key for every call: reusing one
+   * across different batches makes event N of each batch collide, and the
+   * later ones come back as duplicates without being recorded. Prefer
+   * `uniqueId` on the events themselves. At most 255 characters (251 on a
+   * batch).
    */
   idempotencyKey?: string;
 };
 
-const toBody = (input: EventInput) => ({
-  ...input,
-  ...(input.time instanceof Date ? { time: input.time.toISOString() } : {}),
-});
+const MAX_IDEMPOTENCY_KEY = 255;
+
+const invalid = (message: string, field?: string) =>
+  new ZalifyError({ message, code: "invalid_request", status: 0, field });
+
+/**
+ * The event as sent. `time` is fixed here, once, before the first attempt
+ * (now when not given), so a retry resends an identical body and the API's
+ * content dedupe records the event once.
+ */
+const toBody = (input: EventInput, now: string, field = "time") => {
+  let time: string;
+  if (input.time === undefined) {
+    time = now;
+  } else if (input.time instanceof Date) {
+    if (Number.isNaN(input.time.getTime())) {
+      throw invalid("time is an invalid Date", field);
+    }
+    time = input.time.toISOString();
+  } else {
+    time = input.time;
+  }
+  return { ...input, time };
+};
+
+const checkKey = (key: string | undefined, max: number) => {
+  if (key !== undefined && key.length > max) {
+    throw invalid(`idempotencyKey must be ${max} characters or fewer`);
+  }
+};
 
 export class Events {
   constructor(private readonly http: HttpConfig) {}
@@ -126,11 +160,13 @@ export class Events {
     input: EventInput,
     options: TrackOptions = {}
   ): Promise<TrackEventResult> {
+    checkKey(options.idempotencyKey, MAX_IDEMPOTENCY_KEY);
+    const body = toBody(input, new Date().toISOString());
     return request<TrackEventResult>(this.http, {
       method: "POST",
       path: "/events",
-      body: toBody(input),
-      idempotencyKey: options.idempotencyKey ?? randomUUID(),
+      body,
+      idempotencyKey: options.idempotencyKey,
     });
   }
 
@@ -143,11 +179,16 @@ export class Events {
     inputs: EventInput[],
     options: TrackOptions = {}
   ): Promise<TrackBatchResult> {
+    checkKey(options.idempotencyKey, MAX_IDEMPOTENCY_KEY - 4);
+    const now = new Date().toISOString();
+    const events = inputs.map((input, index) =>
+      toBody(input, now, `events.${index}.time`)
+    );
     return request<TrackBatchResult>(this.http, {
       method: "POST",
       path: "/events/batch",
-      body: { events: inputs.map(toBody) },
-      idempotencyKey: options.idempotencyKey ?? randomUUID(),
+      body: { events },
+      idempotencyKey: options.idempotencyKey,
     });
   }
 

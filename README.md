@@ -104,7 +104,8 @@ await zalify.events.track({
 
 - Any name works and needs no setup: the first time an event arrives it appears in the automation editor, with its properties. Names an integration owns (`shopify_*`, `zalify.*`) are refused (`reserved_event`).
 - The person is found by `externalId`, then `email`, then `phone`. Someone new is created as a contact **without** a subscription, so an event never makes anyone marketable.
-- Give each event a `uniqueId`: the same id is recorded once (`duplicate: true` after that), however often you send it.
+- Give each event a `uniqueId`: the same id is recorded once, however often you send it. `duplicate: true` means it was already recorded, by an earlier call or by an earlier attempt of this one that the SDK retried.
+- Without a `uniqueId`, the API dedupes on the event's content (name, person, `time`, properties). The SDK sets `time` before the first attempt, so its own retries can't record an event twice.
 - `time` defaults to now and may be up to 365 days back. Events more than 24 hours old are recorded but never start or end an automation (`recordedOnly: true`), so importing history won't email anyone.
 - `properties` is any JSON object up to 64 KB. Automations compare a field the way the condition asks (`82` and `"82"` are the same to "at least 80"), so changing a field's type doesn't break them.
 
@@ -168,7 +169,7 @@ try {
 
 The SDK retries `rate_limited`, `unavailable`, `idempotency_in_progress`, timeouts and network errors on its own, up to `maxRetries` (default 3). It honors `Retry-After`, and won't wait longer than `maxRetryDelayMs` (default 10 s). Retries always reuse the request's idempotency key, so they never send twice.
 
-For events, give each one a `uniqueId`: without one, the SDK's idempotency key stands in for it, which only covers the SDK's own retries.
+For events, give each one a `uniqueId` rather than an `idempotencyKey`. If you do pass an `idempotencyKey` to `track`/`trackBatch`, use a new one for every call: events without a `uniqueId` take `<key>` (or `<key>:<index>` in a batch) as their dedupe key, so reusing a key across different batches makes the later ones come back as duplicates without being recorded.
 
 Pass your own `idempotencyKey` per logical email, such as `reset:${tokenId}` or `invite:${inviteId}`. Then even retrying the whole call after a crash or deploy sends once. Without one, the SDK makes a key per call, which only covers its own retries.
 
