@@ -6,6 +6,18 @@ export type {
   UpsertContactResult,
 } from "./contacts";
 export type {
+  CatalogEvent,
+  CatalogEventProperty,
+  EventCatalog,
+  EventCustomer,
+  EventInput,
+  Events,
+  TrackBatchItem,
+  TrackBatchResult,
+  TrackEventResult,
+  TrackOptions,
+} from "./events";
+export type {
   EmailMessage,
   EmailSender,
   EmailSendError,

@@ -19,6 +19,11 @@ export type ZalifyErrorCode =
   | "unverified_sender"
   | "not_subscribed"
   | "new_recipient_limit"
+  | "payload_too_large"
+  | "invalid_event"
+  | "reserved_event"
+  | "undeclared_event"
+  | "daily_limit"
   | "suppressed"
   | "rejected"
   | "network_error"
@@ -32,6 +37,8 @@ export class ZalifyError extends Error {
   readonly status: number;
   /** Field-level validation messages for `invalid_request`. */
   readonly details?: string[];
+  /** The offending field for event errors, e.g. `customer.externalId`. */
+  readonly field?: string;
   /** Seconds the API asked to wait (429, 409 in progress). */
   readonly retryAfter?: number;
 
@@ -40,6 +47,7 @@ export class ZalifyError extends Error {
     code: ZalifyErrorCode;
     status: number;
     details?: string[];
+    field?: string;
     retryAfter?: number;
   }) {
     super(init.message);
@@ -47,6 +55,7 @@ export class ZalifyError extends Error {
     this.code = init.code;
     this.status = init.status;
     if (init.details) this.details = init.details;
+    if (init.field) this.field = init.field;
     if (init.retryAfter !== undefined) this.retryAfter = init.retryAfter;
   }
 

@@ -131,6 +131,13 @@ async function once<T>(config: HttpConfig, init: RequestInit): Promise<T> {
     details: Array.isArray(payload.details)
       ? payload.details.filter((d): d is string => typeof d === "string")
       : undefined,
+    field:
+      payload.details &&
+      typeof payload.details === "object" &&
+      !Array.isArray(payload.details) &&
+      typeof (payload.details as { field?: unknown }).field === "string"
+        ? (payload.details as { field: string }).field
+        : undefined,
     retryAfter: parseRetryAfter(response.headers.get("retry-after")),
   });
 }

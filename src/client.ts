@@ -1,9 +1,10 @@
 import { Contacts } from "./contacts";
 import { Emails } from "./emails";
+import { Events } from "./events";
 import { Webhooks } from "./webhooks";
 import type { HttpConfig } from "./http";
 
-export const VERSION = "0.4.0";
+export const VERSION = "0.5.0";
 
 export type ZalifyOptions = {
   /** A Zalify Public API key (`zalify_api_…`). Defaults to `ZALIFY_API_KEY`. */
@@ -25,6 +26,7 @@ export type ZalifyOptions = {
 export class Zalify {
   readonly emails: Emails;
   readonly contacts: Contacts;
+  readonly events: Events;
   readonly webhooks: Webhooks;
 
   constructor(apiKeyOrOptions?: string | ZalifyOptions) {
@@ -58,6 +60,7 @@ export class Zalify {
     };
     this.emails = new Emails(http);
     this.contacts = new Contacts(http);
+    this.events = new Events(http);
     this.webhooks = new Webhooks(options.webhookSecret);
   }
 }

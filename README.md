@@ -2,7 +2,7 @@
 
 The official Node.js / TypeScript SDK for the [Zalify](https://zalify.com) API.
 
-It sends transactional and marketing email from your own domains through Zalify, with retries, idempotency, and typed errors. It has no runtime dependencies and needs Node 18+ (or any runtime with `fetch`).
+It sends transactional and marketing email from your own domains through Zalify, keeps contacts in sync, and records your own events for automations, with retries, idempotency, and typed errors. It has no runtime dependencies and needs Node 18+ (or any runtime with `fetch`).
 
 ```bash
 npm install @zalify/sdk
@@ -11,7 +11,7 @@ npm install @zalify/sdk
 ## Before you start
 
 1. In your Zalify workspace, go to **Settings → Email** and add a sending domain, then publish the DNS records it shows (DKIM TXT + MAIL FROM CNAME). Add a `_dmarc` TXT too (`v=DMARC1; p=none` to start).
-2. In **Settings → Developer**, create an API key and tick **Send email** (and **Manage contacts** to add contacts). A key can only do what it was created with.
+2. In **Settings → Developer**, create an API key and tick **Send email** (**Manage contacts** to add contacts, **Track events** to record events). A key can only do what it was created with.
 3. Keep the key on your server, e.g. in `ZALIFY_API_KEY`. Never ship it to a browser.
 
 ## Send an email
@@ -88,6 +88,47 @@ const contact = await zalify.contacts.upsert({
 - Adding a contact to a list can start that list's automations, such as a welcome series.
 - Calls are safe to retry; the same email updates the same contact.
 
+## Events
+
+Record what people do in your product, e.g. a finished quiz or a confirmed booking, so automations can start on it, filter on its properties and stop on it. The key needs the **Track events** permission (记录事件).
+
+```ts
+await zalify.events.track({
+  event: "Quiz Completed",
+  customer: { externalId: user.id, email: user.email },
+  properties: { result: "dry skin", score: 82 },
+  uniqueId: `quiz:${attempt.id}`,
+});
+// { id, profileId, duplicate: false, recordedOnly: false }
+```
+
+- Any name works and needs no setup: the first time an event arrives it appears in the automation editor, with its properties. Names an integration owns (`shopify_*`, `zalify.*`) are refused (`reserved_event`).
+- The person is found by `externalId`, then `email`, then `phone`. Someone new is created as a contact **without** a subscription, so an event never makes anyone marketable.
+- Give each event a `uniqueId`: the same id is recorded once (`duplicate: true` after that), however often you send it.
+- `time` defaults to now and may be up to 365 days back. Events more than 24 hours old are recorded but never start or end an automation (`recordedOnly: true`), so importing history won't email anyone.
+- `properties` is any JSON object up to 64 KB. Automations compare a field the way the condition asks (`82` and `"82"` are the same to "at least 80"), so changing a field's type doesn't break them.
+
+Send up to 100 at once; each event succeeds or fails on its own:
+
+```ts
+const { accepted, failed, results } = await zalify.events.trackBatch([
+  { event: "Booking Confirmed", customer: { email: "a@example.com" }, uniqueId: "booking:1" },
+  { event: "Booking Confirmed", customer: { email: "b@example.com" }, uniqueId: "booking:2" },
+]);
+for (const item of results) {
+  if (item.status === "error") console.warn(item.index, item.error.code, item.error.message);
+}
+```
+
+List the events your automations can use:
+
+```ts
+const { events } = await zalify.events.catalog();
+// [{ name: "Quiz Completed", source: "custom", canTrigger: true, properties: [{ path: "/score", type: "number", … }], … }]
+```
+
+A batch counts as one request against the key's limit of 120 requests a minute, and a workspace can record up to 1,000,000 events a day (`daily_limit`).
+
 ## Errors, retries and idempotency
 
 Every failure is a `ZalifyError` with a stable `code`, the HTTP `status`, and `details` for validation errors.
@@ -108,7 +149,7 @@ try {
 | code | status | meaning |
 | --- | --- | --- |
 | `unauthorized` | 401 | missing or invalid API key |
-| `missing_scope` | 403 | the key lacks the permission: **Send email** or **Manage contacts** |
+| `missing_scope` | 403 | the key lacks the permission: **Send email**, **Manage contacts** or **Track events** |
 | `email_not_enabled` | 403 | the workspace has no sending set up yet |
 | `contacts_not_enabled` | 403 | the workspace has no contacts set up yet |
 | `list_not_found` | 404 | a list in `lists` isn't in your workspace (nothing was written) |
@@ -119,9 +160,15 @@ try {
 | `idempotency_conflict` | 409 | the idempotency key was used for a different request |
 | `rate_limited` | 429 | over 120 requests a minute for this key (a batch counts once) |
 | `new_recipient_limit` | 429 | the recipient is new to your workspace and today's allowance of new recipients is used; it resets at 00:00 UTC (`retryAfter`) |
+| `invalid_event` | 422 | an event was refused, e.g. properties over 64 KB or `time` out of range (see `field`) |
+| `reserved_event` | 422 | the event name belongs to an integration (`shopify_*`, `zalify.*`, …) |
+| `payload_too_large` | 413 | the body is over 2 MB (one event) or 8 MB (a batch); not retried |
+| `daily_limit` | 429 | the workspace recorded 1,000,000 events today (UTC) |
 | `unavailable` | 503 | temporary; safe to retry with the same idempotency key |
 
 The SDK retries `rate_limited`, `unavailable`, `idempotency_in_progress`, timeouts and network errors on its own, up to `maxRetries` (default 3). It honors `Retry-After`, and won't wait longer than `maxRetryDelayMs` (default 10 s). Retries always reuse the request's idempotency key, so they never send twice.
+
+For events, give each one a `uniqueId`: without one, the SDK's idempotency key stands in for it, which only covers the SDK's own retries.
 
 Pass your own `idempotencyKey` per logical email, such as `reset:${tokenId}` or `invite:${inviteId}`. Then even retrying the whole call after a crash or deploy sends once. Without one, the SDK makes a key per call, which only covers its own retries.
 
