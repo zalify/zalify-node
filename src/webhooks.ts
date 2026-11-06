@@ -3,17 +3,20 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 /** Event types a Zalify webhook endpoint can receive. */
 export type WebhookEventType =
   | "email.sent"
+  | "email.failed"
   | "email.delivered"
   | "email.bounced"
   | "email.complained"
   | "email.opened"
   | "email.clicked"
-  | "contact.unsubscribed";
+  | "contact.unsubscribed"
+  | "email.received";
 
-export type WebhookEvent = {
+/** What happened to an email you sent through the Email API. */
+export type EmailWebhookEvent = {
   /** Stable across retries: use it to drop duplicates. */
   id: string;
-  type: WebhookEventType;
+  type: Exclude<WebhookEventType, "email.received">;
   created_at: string;
   data: {
     /** The `id` returned when the email was sent. */
@@ -21,12 +24,40 @@ export type WebhookEvent = {
     to: string;
     /** The tags sent with the email. */
     tags: Record<string, string>;
+    /**
+     * email.sent: the Message-ID the recipient sees. Keep it to follow up in
+     * the same thread: `threadHeaders({ messageId })`.
+     */
+    message_id?: string;
+    /** email.failed: why it wasn't sent. */
+    reason?: string;
     /** email.bounced: `hard` (permanent — stop sending) or `soft`. */
     bounce_type?: "hard" | "soft" | (string & {});
     /** email.clicked: the link that was clicked. */
     url?: string;
   };
 };
+
+/** An email arrived at one of your mailboxes. */
+export type ReceivedWebhookEvent = {
+  id: string;
+  type: "email.received";
+  created_at: string;
+  data: {
+    /** Fetch the whole email with `emails.inbound.get(inbound_id)`. */
+    inbound_id: string;
+    /** The `email_id` of your email it replies to, when it answers one. */
+    in_reply_to_email_id: string | null;
+    /** The mailbox it came in on, e.g. support@brand.com. */
+    mailbox: string;
+    from: string;
+    subject: string;
+    /** The start of the text body. */
+    preview: string;
+  };
+};
+
+export type WebhookEvent = EmailWebhookEvent | ReceivedWebhookEvent;
 
 export class WebhookVerificationError extends Error {
   constructor(message: string) {

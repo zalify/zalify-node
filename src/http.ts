@@ -16,7 +16,12 @@ type RequestInit = {
   path: string;
   body?: unknown;
   idempotencyKey?: string;
+  /** Return the body's bytes and type instead of parsing JSON. */
+  raw?: boolean;
 };
+
+/** A file the API returned as is. */
+export type RawBody = { content: Uint8Array; contentType: string };
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -95,6 +100,15 @@ async function once<T>(config: HttpConfig, init: RequestInit): Promise<T> {
     });
   } finally {
     clearTimeout(timer);
+  }
+
+  if (init.raw && response.ok) {
+    const raw: RawBody = {
+      content: new Uint8Array(await response.arrayBuffer()),
+      contentType:
+        response.headers.get("content-type") ?? "application/octet-stream",
+    };
+    return raw as T;
   }
 
   const text = await response.text();

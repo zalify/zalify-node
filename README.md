@@ -67,6 +67,52 @@ for (const [i, result] of data.entries()) {
 }
 ```
 
+## Attachments and threads
+
+Attach up to 10 files (10 MB together) as bytes or base64. `threadHeaders()` keeps a follow-up in the same thread as an earlier email:
+
+```ts
+import { readFile } from "node:fs/promises";
+import { threadHeaders } from "@zalify/sdk";
+
+await zalify.emails.send({
+  from: "Emma <emma@acme.com>",
+  to: "creator@example.com",
+  subject: "Re: Spring collab",
+  html: "<p>Following up with the brief.</p>",
+  // message_id from your first email's email.sent webhook event
+  headers: threadHeaders({ messageId: sentMessageId }),
+  attachments: [{ filename: "brief.pdf", content: await readFile("brief.pdf") }],
+});
+```
+
+`headers` takes up to 10 other headers too. Ones Zalify or the mail provider set (From, To, Cc, Subject, Reply-To, Message-ID, Date, Content-Type, List-Unsubscribe…) are refused.
+
+## Receive email
+
+Mail that arrives at your mailboxes (senders forwarded to Zalify, or a reply domain, in **Settings → Email → Receiving**) can be read with the same key. Each new email is also an `email.received` webhook event.
+
+```ts
+const { data, nextCursor } = await zalify.emails.inbound.list({ mailbox: "emma@acme.com" });
+
+const email = await zalify.emails.inbound.get(data[0].id);
+// { from, subject, text, html, messageId, references, inReplyToEmailId, attachments, … }
+// inReplyToEmailId: the id of your email it answers, when it answers one
+
+for (const file of email.attachments) {
+  const { content, contentType } = await zalify.emails.inbound.getAttachment(email.id, file.id);
+}
+
+// Reply in its thread
+await zalify.emails.send({
+  from: "Emma <emma@acme.com>",
+  to: email.replyTo ?? email.from,
+  subject: `Re: ${email.subject}`,
+  html: "<p>Sounds good!</p>",
+  headers: threadHeaders(email),
+});
+```
+
 ## Contacts
 
 Create or update a contact by email, e.g. when someone signs up. The key needs the **Manage contacts** permission.
@@ -188,15 +234,17 @@ new Zalify({
 
 ## Webhooks
 
-Add an endpoint in **Settings → Developer → Webhooks** to get events for email sent through the API:
+Add an endpoint in **Settings → Developer → Webhooks** to get events for email sent through the API, and for email you receive:
 
-- `email.sent`
+- `email.sent`, with `message_id`: the Message-ID the recipient sees, for `threadHeaders()`
+- `email.failed`, with `reason`
 - `email.delivered`
 - `email.bounced`, with `bounce_type` `hard` or `soft`
 - `email.complained`
 - `email.opened`
 - `email.clicked`, with `url`
 - `contact.unsubscribed`
+- `email.received`: `{ inbound_id, in_reply_to_email_id, mailbox, from, subject, preview }`; fetch the whole email with `emails.inbound.get(inbound_id)`
 
 The signing secret (`whsec_…`) is shown once, when you create the endpoint.
 

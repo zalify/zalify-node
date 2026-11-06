@@ -4,7 +4,7 @@ import { Events } from "./events";
 import { Webhooks } from "./webhooks";
 import type { HttpConfig } from "./http";
 
-export const VERSION = "0.5.0";
+export const VERSION = "0.6.0";
 
 export type ZalifyOptions = {
   /** A Zalify Public API key (`zalify_api_…`). Defaults to `ZALIFY_API_KEY`. */
