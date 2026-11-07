@@ -1,4 +1,5 @@
 import { Contacts } from "./contacts";
+import { Conversations, Inboxes } from "./conversations";
 import { Emails } from "./emails";
 import { Events } from "./events";
 import { Webhooks } from "./webhooks";
@@ -25,6 +26,9 @@ export type ZalifyOptions = {
 
 export class Zalify {
   readonly emails: Emails;
+  /** Two-way exchanges with one person: start, reply, read. */
+  readonly conversations: Conversations;
+  readonly inboxes: Inboxes;
   readonly contacts: Contacts;
   readonly events: Events;
   readonly webhooks: Webhooks;
@@ -59,6 +63,8 @@ export class Zalify {
       userAgent: `zalify-node/${VERSION}`,
     };
     this.emails = new Emails(http);
+    this.conversations = new Conversations(http);
+    this.inboxes = new Inboxes(http);
     this.contacts = new Contacts(http);
     this.events = new Events(http);
     this.webhooks = new Webhooks(options.webhookSecret);

@@ -1,4 +1,5 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
+import type { Conversation, ConversationMessage } from "./conversations";
 
 /** Event types a Zalify webhook endpoint can receive. */
 export type WebhookEventType =
@@ -10,13 +11,20 @@ export type WebhookEventType =
   | "email.opened"
   | "email.clicked"
   | "contact.unsubscribed"
-  | "email.received";
+  | "email.received"
+  | "conversation.created"
+  | "conversation.message.received"
+  | "conversation.message.updated"
+  | "conversation.updated";
 
 /** What happened to an email you sent through the Email API. */
 export type EmailWebhookEvent = {
   /** Stable across retries: use it to drop duplicates. */
   id: string;
-  type: Exclude<WebhookEventType, "email.received">;
+  type: Exclude<
+    WebhookEventType,
+    "email.received" | ConversationWebhookEvent["type"]
+  >;
   created_at: string;
   data: {
     /** The `id` returned when the email was sent. */
@@ -24,10 +32,7 @@ export type EmailWebhookEvent = {
     to: string;
     /** The tags sent with the email. */
     tags: Record<string, string>;
-    /**
-     * email.sent: the Message-ID the recipient sees. Keep it to follow up in
-     * the same thread: `threadHeaders({ messageId })`.
-     */
+    /** email.sent: the Message-ID the recipient sees. */
     message_id?: string;
     /** email.failed: why it wasn't sent. */
     reason?: string;
@@ -57,7 +62,29 @@ export type ReceivedWebhookEvent = {
   };
 };
 
-export type WebhookEvent = EmailWebhookEvent | ReceivedWebhookEvent;
+/**
+ * A conversation started, a message came in (any channel), a sent message's
+ * delivery moved on, or a conversation's status or metadata changed.
+ * `message.html` is left out; read it with `conversations.messages.list`.
+ */
+export type ConversationWebhookEvent = {
+  id: string;
+  type:
+    | "conversation.created"
+    | "conversation.message.received"
+    | "conversation.message.updated"
+    | "conversation.updated";
+  created_at: string;
+  data: {
+    conversation: Conversation;
+    message?: ConversationMessage;
+  };
+};
+
+export type WebhookEvent =
+  | EmailWebhookEvent
+  | ReceivedWebhookEvent
+  | ConversationWebhookEvent;
 
 export class WebhookVerificationError extends Error {
   constructor(message: string) {

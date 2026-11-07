@@ -17,7 +17,26 @@ export type {
   TrackEventResult,
   TrackOptions,
 } from "./events";
-export { threadHeaders } from "./emails";
+export type {
+  Channel,
+  Conversation,
+  ConversationAttachment,
+  ConversationChannel,
+  ConversationMessage,
+  Conversations,
+  ConversationWithMessage,
+  CreateConversationParams,
+  ImportConversationParams,
+  Inbox,
+  Inboxes,
+  ListConversationsParams,
+  MessageContent,
+  Messages,
+  MessageStatus,
+  Page,
+  ReplyParams,
+  UpdateConversationParams,
+} from "./conversations";
 export type {
   EmailAttachment,
   EmailMessage,
@@ -42,6 +61,7 @@ export {
   verifyWebhook,
   Webhooks,
   WebhookVerificationError,
+  type ConversationWebhookEvent,
   type EmailWebhookEvent,
   type ReceivedWebhookEvent,
   type VerifyOptions,

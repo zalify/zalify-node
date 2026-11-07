@@ -67,50 +67,86 @@ for (const [i, result] of data.entries()) {
 }
 ```
 
-## Attachments and threads
+## Attachments
 
-Attach up to 10 files (10 MB together) as bytes or base64. `threadHeaders()` keeps a follow-up in the same thread as an earlier email:
+Attach up to 10 files (10 MB together) as bytes or base64:
 
 ```ts
 import { readFile } from "node:fs/promises";
-import { threadHeaders } from "@zalify/sdk";
 
 await zalify.emails.send({
   from: "Emma <emma@acme.com>",
   to: "creator@example.com",
-  subject: "Re: Spring collab",
-  html: "<p>Following up with the brief.</p>",
-  // message_id from your first email's email.sent webhook event
-  headers: threadHeaders({ messageId: sentMessageId }),
+  subject: "Spring collab brief",
+  html: "<p>Brief attached.</p>",
   attachments: [{ filename: "brief.pdf", content: await readFile("brief.pdf") }],
 });
 ```
 
-`headers` takes up to 10 other headers too. Ones Zalify or the mail provider set (From, To, Cc, Subject, Reply-To, Message-ID, Date, Content-Type, List-Unsubscribe…) are refused.
+`headers` takes up to 10 extra headers. Ones Zalify or the mail provider set (From, To, Cc, Subject, Reply-To, Message-ID, Date, Content-Type, List-Unsubscribe…) are refused.
+
+## Conversations
+
+For back-and-forth with a person: start a conversation, reply in it, and replies that come back land in it. Zalify fills in the sender, recipient, `Re:` subject and thread headers, so follow-ups and answers stay in one thread in their mail client. Email today; every conversation and message carries `channel`, so SMS and WhatsApp won't change the API. The key needs the **Conversations** permission.
+
+```ts
+// Start one: the first email
+const { conversation } = await zalify.conversations.create(
+  {
+    inbox: "emma@acme.com", // an inbox id or address: see zalify.inboxes.list()
+    contact: { email: "creator@example.com" },
+    subject: "Spring collab",
+    html: "<p>Hi…</p>",
+    externalId: campaignCreator.id, // your own id, unique in the workspace
+    metadata: { campaignId: "c_9" },
+  },
+  { idempotencyKey: `outreach:${campaignCreator.id}` }
+);
+
+// Follow up before they answer, or reply after: content only
+await zalify.conversations.reply(conversation.id, { text: "Just checking in!" });
+
+// What came back: conversation.message.received
+const event = zalify.webhooks.verify(rawBody, req.headers);
+if (event.type === "conversation.message.received") {
+  const { conversation, message } = event.data;
+  // message.textWithoutQuote: what they wrote this time, without the quoted thread
+  await zalify.conversations.reply(conversation.id, { text: "Thanks, sending the contract." });
+}
+
+// Read
+await zalify.conversations.list({ externalId: campaignCreator.id });
+await zalify.conversations.list({ contact: "creator@example.com", status: "open" });
+const { data: messages } = await zalify.conversations.messages.list(conversation.id);
+await zalify.conversations.update(conversation.id, { status: "closed" });
+```
+
+Every received email lands in a conversation: the one it replies to, else a new one (replies to broadcasts and flows, mail out of the blue), so `conversation.message.received` covers everything that comes in.
+
+Moving threads over from another mailbox provider? Register each one by its Message-IDs and keep replying in it:
+
+```ts
+await zalify.conversations.import({
+  inbox: "emma@acme.com",
+  contact: { email: "creator@example.com" },
+  subject: "Spring collab",
+  messageIds: gmailThread.messages.map((m) => m.messageIdHeader), // oldest first
+  externalId: campaignCreator.id,
+});
+```
 
 ## Receive email
 
-Mail that arrives at your mailboxes (senders forwarded to Zalify, or a reply domain, in **Settings → Email → Receiving**) can be read with the same key. Each new email is also an `email.received` webhook event.
+The raw received mail is also readable on its own, with a Send email key. Each new email is an `email.received` webhook event too.
 
 ```ts
 const { data, nextCursor } = await zalify.emails.inbound.list({ mailbox: "emma@acme.com" });
-
 const email = await zalify.emails.inbound.get(data[0].id);
 // { from, subject, text, html, messageId, references, inReplyToEmailId, attachments, … }
-// inReplyToEmailId: the id of your email it answers, when it answers one
 
 for (const file of email.attachments) {
   const { content, contentType } = await zalify.emails.inbound.getAttachment(email.id, file.id);
 }
-
-// Reply in its thread
-await zalify.emails.send({
-  from: "Emma <emma@acme.com>",
-  to: email.replyTo ?? email.from,
-  subject: `Re: ${email.subject}`,
-  html: "<p>Sounds good!</p>",
-  headers: threadHeaders(email),
-});
 ```
 
 ## Contacts
@@ -196,7 +232,7 @@ try {
 | code | status | meaning |
 | --- | --- | --- |
 | `unauthorized` | 401 | missing or invalid API key |
-| `missing_scope` | 403 | the key lacks the permission: **Send email**, **Manage contacts** or **Track events** |
+| `missing_scope` | 403 | the key lacks the permission: **Send email**, **Conversations**, **Manage contacts** or **Track events** |
 | `email_not_enabled` | 403 | the workspace has no sending set up yet |
 | `contacts_not_enabled` | 403 | the workspace has no contacts set up yet |
 | `list_not_found` | 404 | a list in `lists` isn't in your workspace (nothing was written) |
@@ -205,6 +241,10 @@ try {
 | `unverified_sender` | 422 | the from address isn't on a verified domain |
 | `not_subscribed` | 422 | a marketing recipient isn't a subscribed contact |
 | `idempotency_conflict` | 409 | the idempotency key was used for a different request |
+| `conversation_exists` | 409 | a conversation already has this `externalId` (`details.conversationId`); reply to it |
+| `inbox_not_found` | 404 | no inbox with that id or address; see `zalify.inboxes.list()` |
+| `inbox_cannot_send` | 422 | the inbox only receives (a catch-all reply domain) |
+| `suppressed` | 422 | the recipient bounced hard or complained before |
 | `rate_limited` | 429 | over 120 requests a minute for this key (a batch counts once) |
 | `new_recipient_limit` | 429 | the recipient is new to your workspace and today's allowance of new recipients is used; it resets at 00:00 UTC (`retryAfter`) |
 | `invalid_event` | 422 | an event was refused, e.g. properties over 64 KB or `time` out of range (see `field`) |
@@ -236,7 +276,7 @@ new Zalify({
 
 Add an endpoint in **Settings → Developer → Webhooks** to get events for email sent through the API, and for email you receive:
 
-- `email.sent`, with `message_id`: the Message-ID the recipient sees, for `threadHeaders()`
+- `email.sent`, with `message_id`: the Message-ID the recipient sees
 - `email.failed`, with `reason`
 - `email.delivered`
 - `email.bounced`, with `bounce_type` `hard` or `soft`
@@ -245,6 +285,7 @@ Add an endpoint in **Settings → Developer → Webhooks** to get events for ema
 - `email.clicked`, with `url`
 - `contact.unsubscribed`
 - `email.received`: `{ inbound_id, in_reply_to_email_id, mailbox, from, subject, preview }`; fetch the whole email with `emails.inbound.get(inbound_id)`
+- `conversation.created`, `conversation.message.received`, `conversation.message.updated`, `conversation.updated`: `{ conversation, message? }` (`message.html` left out; read it with `conversations.messages.list`)
 
 The signing secret (`whsec_…`) is shown once, when you create the endpoint.
 

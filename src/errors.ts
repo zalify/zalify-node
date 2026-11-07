@@ -26,6 +26,12 @@ export type ZalifyErrorCode =
   | "daily_limit"
   | "suppressed"
   | "rejected"
+  | "not_found"
+  | "conversation_exists"
+  | "inbox_not_found"
+  | "inbox_cannot_send"
+  | "channel_unavailable"
+  | "email_api_not_enabled"
   | "network_error"
   | "timeout"
   | (string & {});

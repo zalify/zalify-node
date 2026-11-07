@@ -43,10 +43,10 @@ export type EmailMessage = EmailSender & {
    */
   tags?: Record<string, string>;
   /**
-   * Up to 10 extra headers, e.g. from `threadHeaders()` to keep a follow-up
-   * or a reply in the same thread. From, To, Cc, Subject, Reply-To,
-   * Message-ID, Date, Content-Type, List-Unsubscribe and the like are set by
-   * Zalify and refused.
+   * Up to 10 extra headers. For back-and-forth with a person, use
+   * `zalify.conversations`, which threads replies for you. From, To, Cc,
+   * Subject, Reply-To, Message-ID, Date, Content-Type, List-Unsubscribe and
+   * the like are set by Zalify and refused.
    */
   headers?: Record<string, string>;
   /** Up to 10 files, 10 MB together. */
@@ -135,43 +135,6 @@ const toWire = <T extends EmailMessage>(message: T): T =>
       }
     : message;
 
-const MESSAGE_ID = /<[^<>\s]+>/g;
-/** References only needs the thread's root and its latest ids. */
-const MAX_REFERENCES = 10;
-
-/**
- * Headers that put an email in the same thread as an earlier one:
- * `In-Reply-To` is the earlier email's Message-ID, `References` its
- * References plus that id (RFC 5322). Pass the `messageId` and `references`
- * of a received email (`emails.inbound.get`), or the `message_id` of your own
- * email's `email.sent` webhook event to follow up before they reply.
- */
-export function threadHeaders(earlier: {
-  /** Null for a received email that had none: it can't be threaded. */
-  messageId: string | null;
-  references?: string | null;
-}): { "In-Reply-To": string; References: string } {
-  const [messageId] = earlier.messageId?.match(MESSAGE_ID) ?? [];
-  if (!messageId) {
-    throw new ZalifyError({
-      message: `Not a Message-ID: ${earlier.messageId ?? "none"}`,
-      code: "invalid_request",
-      status: 0,
-    });
-  }
-  const references = (earlier.references?.match(MESSAGE_ID) ?? []).filter(
-    (id) => id !== messageId
-  );
-  const kept =
-    references.length < MAX_REFERENCES
-      ? references
-      : [references[0] as string, ...references.slice(-(MAX_REFERENCES - 2))];
-  return {
-    "In-Reply-To": messageId,
-    References: [...kept, messageId].join(" "),
-  };
-}
-
 /** A received email in a list. */
 export type InboundEmailSummary = {
   id: string;
@@ -203,7 +166,7 @@ export type InboundEmail = InboundEmailSummary & {
   to: string;
   cc: string[];
   replyTo: string | null;
-  /** Its Message-ID; pass the email to `threadHeaders()` to reply in its thread. */
+  /** Its Message-ID. To answer it, reply in its conversation. */
   messageId: string | null;
   references: string | null;
   text: string | null;
